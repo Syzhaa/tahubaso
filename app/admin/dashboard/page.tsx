@@ -15,7 +15,7 @@ export default function DashboardPage() {
     const router = useRouter();
 
     // Ganti dengan ID Toko Anda setelah login. Untuk sekarang, kita hardcode.
-    const tokoId = "toko-sejahtera-01"; 
+    const tokoId = "tahubaso"; 
 
     useEffect(() => {
         if (loading) return;
