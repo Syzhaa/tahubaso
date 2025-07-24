@@ -35,14 +35,17 @@ export default function DashboardPage() {
 
     const handleUpdateStatus = async (orderId: string, newStatus: 'diproses' | 'selesai', paymentMethod?: 'cash' | 'QRIS') => {
         const orderRef = doc(db, 'orders', orderId);
-        // Hapus tipe 'any' dan biarkan TypeScript yang menyimpulkan tipenya
-        const updateData: { status: string; paymentMethod?: 'cash' | 'QRIS' } = { 
-            status: newStatus 
+
+        // Buat objek untuk diupdate, tanpa menggunakan tipe 'any'
+        const updateData: { status: string; paymentMethod?: 'cash' | 'QRIS' } = {
+            status: newStatus,
         };
+
         if (newStatus === 'selesai' && paymentMethod) {
             updateData.paymentMethod = paymentMethod;
         }
-        await updateDoc(orderRef, updateData as any); // Kita bisa pakai 'as any' di sini jika tipe updateDoc kompleks
+        
+        await updateDoc(orderRef, updateData);
     };
 
     const handleLogout = () => {

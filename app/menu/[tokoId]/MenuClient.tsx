@@ -5,6 +5,7 @@ import { useState } from 'react';
 import { Menu, CartItem } from '@/types';
 import { db } from '@/lib/firebase';
 import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
+import Image from 'next/image';
 
 export default function MenuClient({ menus, tokoId }: { menus: Menu[], tokoId: string }) {
   const [cart, setCart] = useState<CartItem[]>([]);
@@ -64,7 +65,13 @@ export default function MenuClient({ menus, tokoId }: { menus: Menu[], tokoId: s
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
             {menus.map((menu) => (
               <div key={menu.id} className="border rounded-lg overflow-hidden shadow-lg">
-                <img src={menu.imageUrl || 'https://via.placeholder.com/300'} alt={menu.name} className="w-full h-48 object-cover" />
+                <Image
+                    src={menu.imageUrl || 'https://via.placeholder.com/300'}
+                    alt={menu.name}
+                    width={300}
+                    height={192}
+                    className="w-full h-48 object-cover"
+                />
                 <div className="p-4">
                   <h3 className="font-bold text-lg">{menu.name}</h3>
                   <p className="text-gray-600">Rp {menu.price.toLocaleString('id-ID')}</p>

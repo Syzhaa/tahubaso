@@ -20,12 +20,13 @@ export default function LoginPage() {
         return;
     }
     try {
-      await signInWithEmailAndPassword(auth, email, password);
-      router.push('/admin/dashboard');
-    } catch (err: any) {
-      setError('Email atau password salah.');
-    }
-  };
+        await signInWithEmailAndPassword(auth, email, password);
+        router.push('/admin/dashboard');
+        } catch (error) { // GANTI 'err: any' menjadi 'error'
+        setError('Email atau password salah.');
+        console.error("Login Gagal: ", error); // Tambahkan ini untuk melihat detail error di konsol
+        }
+    };
 
   return (
     <div className="flex items-center justify-center min-h-screen bg-gray-100">
