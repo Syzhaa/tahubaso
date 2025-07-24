@@ -12,7 +12,11 @@ async function getMenus(tokoId: string): Promise<Menu[]> {
   return menuList;
 }
 
-export default async function MenuPage({ params }: { params: { tokoId: string } }) {
+type Props = {
+  params: { tokoId: string };
+};
+
+export default async function MenuPage({ params }: Props) {
   const menus = await getMenus(params.tokoId);
 
   if (!menus.length) {
