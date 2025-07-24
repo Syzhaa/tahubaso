@@ -1,4 +1,3 @@
-// app/menu/[tokoId]/page.tsx
 import { db } from '@/lib/firebase';
 import { collection, query, where, getDocs } from 'firebase/firestore';
 import { Menu } from '@/types';
@@ -12,18 +11,12 @@ async function getMenus(tokoId: string): Promise<Menu[]> {
   return menuList;
 }
 
-// Tambahkan 'searchParams' ke dalam definisi tipe Props
-type Props = {
-  params: { tokoId: string };
-  searchParams: { [key: string]: string | string[] | undefined };
-};
-
-export default async function MenuPage({ params }: Props) {
+// KEMBALI KE BENTUK PALING SEDERHANA
+export default async function MenuPage({ params }: { params: { tokoId: string } }) {
   const menus = await getMenus(params.tokoId);
 
   if (!menus.length) {
     return <div className="text-center p-10 font-bold text-xl">Toko tidak ditemukan atau belum ada menu.</div>;
   }
-  // Kita akan membuat komponen MenuClient selanjutnya
   return <MenuClient menus={menus} tokoId={params.tokoId} />;
 }
