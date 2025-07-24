@@ -11,12 +11,18 @@ async function getMenus(tokoId: string): Promise<Menu[]> {
   return menuList;
 }
 
-// KEMBALI KE BENTUK PALING SEDERHANA
-export default async function MenuPage({ params }: { params: { tokoId: string } }) {
-  const menus = await getMenus(params.tokoId);
-
+// FIXED: await params untuk Next.js 15
+export default async function MenuPage({ 
+  params 
+}: { 
+  params: Promise<{ tokoId: string }> 
+}) {
+  const { tokoId } = await params; // <-- Kunci perbaikannya di sini
+  const menus = await getMenus(tokoId);
+  
   if (!menus.length) {
     return <div className="text-center p-10 font-bold text-xl">Toko tidak ditemukan atau belum ada menu.</div>;
   }
-  return <MenuClient menus={menus} tokoId={params.tokoId} />;
+  
+  return <MenuClient menus={menus} tokoId={tokoId} />;
 }
