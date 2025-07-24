@@ -12,8 +12,10 @@ async function getMenus(tokoId: string): Promise<Menu[]> {
   return menuList;
 }
 
+// Tambahkan 'searchParams' ke dalam definisi tipe Props
 type Props = {
   params: { tokoId: string };
+  searchParams: { [key: string]: string | string[] | undefined };
 };
 
 export default async function MenuPage({ params }: Props) {
