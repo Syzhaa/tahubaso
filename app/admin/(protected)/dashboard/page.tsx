@@ -10,9 +10,11 @@ import { useReactToPrint } from 'react-to-print';
 import StrukPrint from './StrukPrint';
 
 export default function DashboardPage() {
+  const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const [orders, setOrders] = useState<Order[]>([]);
   const [realtimeStatus, setRealtimeStatus] = useState<'disconnected' | 'connecting' | 'connected' | 'error'>('disconnected');
+  const [debugLogs, setDebugLogs] = useState<string[]>([]);
   const [processingOrders, setProcessingOrders] = useState<Set<number>>(new Set());
   const router = useRouter();
   const tokoId = 'tahubaso';
@@ -42,7 +44,7 @@ export default function DashboardPage() {
     const timestamp = new Date().toLocaleTimeString();
     const logMessage = `[${timestamp}] ${message}`;
     console.log(logMessage);
-    // Debug logs are not stored in state since they're unused
+    setDebugLogs((prev) => [...prev.slice(-9), logMessage]);
   };
 
   const fetchInitialOrders = useCallback(async () => {
@@ -61,8 +63,8 @@ export default function DashboardPage() {
         addDebugLog(`✅ Berhasil mengambil ${data?.length || 0} pesanan`);
         setOrders(data as Order[]);
       }
-    } catch (err: unknown) { // Changed from 'any' to 'unknown'
-      addDebugLog(`❌ Exception di fetchInitialOrders: ${(err as Error).message}`);
+    } catch (err: any) {
+      addDebugLog(`❌ Exception di fetchInitialOrders: ${err.message}`);
     }
   }, [tokoId]);
 
@@ -74,10 +76,10 @@ export default function DashboardPage() {
           router.push('/admin/login');
           return;
         }
-        // Removed unused 'user' state
+        setUser(session.user);
         await fetchInitialOrders();
-      } catch (err: unknown) { // Changed from 'any' to 'unknown'
-        addDebugLog(`❌ Eror di checkUserAndFetchOrders: ${(err as Error).message}`);
+      } catch (err: any) {
+        addDebugLog(`❌ Eror di checkUserAndFetchOrders: ${err.message}`);
       } finally {
         setLoading(false);
       }
@@ -135,8 +137,8 @@ export default function DashboardPage() {
       } else {
         addDebugLog(`✅ Permintaan update #${orderId} berhasil`);
       }
-    } catch (err: unknown) { // Changed from 'any' to 'unknown'
-      addDebugLog(`❌ Exception update pesanan #${orderId}: ${(err as Error).message}`);
+    } catch (err: any) {
+      addDebugLog(`❌ Exception update pesanan #${orderId}: ${err.message}`);
     } finally {
       setProcessingOrders((prev) => {
         const newSet = new Set(prev);
