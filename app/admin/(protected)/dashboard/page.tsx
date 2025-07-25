@@ -5,7 +5,6 @@ import { supabase } from '@/lib/supabase';
 import { Order } from '@/types';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { User } from '@supabase/supabase-js';
 import { useReactToPrint } from 'react-to-print';
 import StrukPrint from './StrukPrint';
 
@@ -77,7 +76,6 @@ export default function DashboardPage() {
           router.push('/admin/login');
           return;
         }
-        // Remove unused user state assignment
         await fetchInitialOrders();
       } catch (error) {
         if (error instanceof Error) {
@@ -98,7 +96,11 @@ export default function DashboardPage() {
         addDebugLog(`📡 Real-time event: ${payload.eventType}`);
         fetchInitialOrders();
 
-        const orderId = payload.eventType === 'UPDATE' ? payload.new.id : payload.old?.id;
+        // Type assertion to safely access id property
+        const orderId = payload.eventType === 'UPDATE' 
+          ? (payload.new as any)?.id 
+          : (payload.old as any)?.id;
+        
         if (orderId) {
           setProcessingOrders((prev) => {
             const newSet = new Set(prev);
