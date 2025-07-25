@@ -4,12 +4,10 @@ import { useEffect, useState, useRef, useMemo, useCallback } from 'react';
 import { supabase } from '@/lib/supabase';
 import { Order, Menu, CartItem } from '@/types';
 import { useRouter } from 'next/navigation';
-import { User } from '@supabase/supabase-js';
 import { useReactToPrint } from 'react-to-print';
 import StrukPrint from './StrukPrint';
 
 export default function KasirPage() {
-  const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const [menus, setMenus] = useState<Menu[]>([]);
   const [cart, setCart] = useState<CartItem[]>([]);
@@ -81,8 +79,8 @@ export default function KasirPage() {
 
       if (error) throw error;
       setMenus(data as Menu[]);
-    } catch (err: any) {
-      console.error('Error fetching menus:', err.message);
+    } catch (err: unknown) { // Changed from 'any' to 'unknown'
+      console.error('Error fetching menus:', (err as Error).message);
     }
   };
 
@@ -94,10 +92,10 @@ export default function KasirPage() {
           router.push('/admin/login');
           return;
         }
-        setUser(session.user);
+        // Removed unused 'user' state
         await fetchMenus();
-      } catch (err: any) {
-        console.error('Error in checkUserAndFetchData:', err.message);
+      } catch (err: unknown) { // Changed from 'any' to 'unknown'
+        console.error('Error in checkUserAndFetchData:', (err as Error).message);
       } finally {
         setLoading(false);
       }
@@ -156,7 +154,7 @@ export default function KasirPage() {
         paymentMethod,
       };
 
-      const { data, error } = await supabase
+      const { error } = await supabase // Removed unused 'data'
         .from('orders')
         .insert(newOrder)
         .select();
@@ -164,14 +162,10 @@ export default function KasirPage() {
 
       setCart([]);
       setPaymentMethod('cash');
-    } catch (err: any) {
-      console.error('Error creating order:', err.message);
+    } catch (err: unknown) { // Changed from 'any' to 'unknown'
+      console.error('Error creating order:', (err as Error).message);
       alert('Gagal membuat pesanan baru');
     }
-  };
-
-  const handlePrintStruk = (order: Order) => {
-    setOrderToPrint(order);
   };
 
   if (loading) {

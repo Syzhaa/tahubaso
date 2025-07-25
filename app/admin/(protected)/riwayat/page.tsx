@@ -7,7 +7,6 @@ import StrukPrint from './StrukPrint';
 import { IconPrinter, IconAlertCircle } from '@tabler/icons-react';
 import { useReactToPrint } from 'react-to-print';
 import { useRouter } from 'next/navigation';
-import Link from 'next/link';
 
 export default function HistoryPage() {
   const [orders, setOrders] = useState<Order[]>([]);
@@ -16,6 +15,8 @@ export default function HistoryPage() {
   const [filterDate, setFilterDate] = useState(today);
   const [filterType, setFilterType] = useState<'day' | 'month'>('day');
   const [searchQuery, setSearchQuery] = useState('');
+  const [currentPage, setCurrentPage] = useState(1); // State untuk halaman saat ini
+  const itemsPerPage = 9; // Batas 9 item per halaman
   const strukRef = useRef<HTMLDivElement>(null);
   const [orderToPrint, setOrderToPrint] = useState<Order | null>(null);
   const router = useRouter();
@@ -113,6 +114,7 @@ export default function HistoryPage() {
     fetchHistory(firstDay, 'month');
   };
 
+  // Filter dan paginasi
   const filteredOrders = orders.filter((order) => {
     const idStr = order.id ? String(order.id) : '';
     const paymentMethodStr = order.paymentMethod || '';
@@ -121,6 +123,22 @@ export default function HistoryPage() {
       paymentMethodStr.toLowerCase().includes(searchQuery.toLowerCase())
     );
   });
+
+  // Hitung total halaman
+  const totalPages = Math.ceil(filteredOrders.length / itemsPerPage);
+
+  // Ambil item untuk halaman saat ini
+  const paginatedOrders = filteredOrders.slice(
+    (currentPage - 1) * itemsPerPage,
+    currentPage * itemsPerPage
+  );
+
+  // Handler untuk navigasi halaman
+  const handlePageChange = (page: number) => {
+    if (page >= 1 && page <= totalPages) {
+      setCurrentPage(page);
+    }
+  };
 
   return (
     <div className="min-h-screen bg-gray-50 font-sans">
@@ -188,72 +206,107 @@ export default function HistoryPage() {
             <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-blue-600 mx-auto"></div>
             <p className="text-gray-600 text-sm mt-2">Memuat data...</p>
           </div>
-        ) : filteredOrders.length === 0 ? (
+        ) : paginatedOrders.length === 0 ? (
           <div className="bg-white rounded-lg shadow-sm p-6 text-center">
             <p className="text-gray-500 text-sm">
               Tidak ada transaksi pada {filterType === 'day' ? 'tanggal ini' : 'bulan ini'}.
             </p>
           </div>
         ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-            {filteredOrders.map((order) => {
-              const isValidOrder = validateOrderData(order);
-              return (
-                <div
-                  key={order.id}
-                  className="bg-white rounded-lg shadow-sm p-4 hover:shadow-md transition-all duration-200"
-                >
-                  <div className="flex justify-between items-start mb-3">
-                    <h3 className="text-sm font-semibold text-gray-800">
-                      #{order.id}
-                      {!isValidOrder && (
-                        <IconAlertCircle
-                          size={16}
-                          className="inline ml-2 text-red-500"
-                          title="Data tidak lengkap"
-                        />
-                      )}
-                    </h3>
-                    <span className="text-xs text-gray-500">
-                      {order.created_at
-                        ? new Date(order.created_at).toLocaleDateString('id-ID', {
-                            day: 'numeric',
-                            month: 'short',
-                            year: 'numeric',
-                          })
-                        : 'N/A'}
-                    </span>
-                  </div>
-                  <p className="text-sm text-gray-600 mb-2">
-                    Total: Rp {order.total ? order.total.toLocaleString('id-ID') : 'N/A'}
-                  </p>
-                  <p className="text-xs text-gray-600 mb-3">
-                    Waktu:{' '}
-                    {order.created_at
-                      ? new Date(order.created_at).toLocaleTimeString('id-ID')
-                      : 'N/A'}
-                  </p>
-                  <div className="flex items-center justify-between mb-3">
-                    <span className="px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">
-                      {order.paymentMethod?.toUpperCase() || 'N/A'}
-                    </span>
-                  </div>
-                  <button
-                    onClick={() => setOrderToPrint(order)}
-                    className={`flex w-full items-center justify-center py-1.5 px-3 rounded-md text-sm font-medium transition-all duration-200 ${
-                      isValidOrder
-                        ? 'bg-blue-100 text-blue-600 hover:bg-blue-200 hover:text-blue-700'
-                        : 'bg-gray-100 text-gray-400 cursor-not-allowed'
-                    }`}
-                    disabled={!isValidOrder}
-                    title={isValidOrder ? 'Cetak Struk' : 'Data tidak lengkap, tidak dapat mencetak'}
+          <>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+              {paginatedOrders.map((order) => {
+                const isValidOrder = validateOrderData(order);
+                return (
+                  <div
+                    key={order.id}
+                    className="bg-white rounded-lg shadow-sm p-4 hover:shadow-md transition-all duration-200"
                   >
-                    <IconPrinter size={16} className="mr-1" /> Cetak Struk
+                    <div className="flex justify-between items-start mb-3">
+                      <h3 className="text-sm font-semibold text-gray-800">
+                        #{order.id}
+                        {!isValidOrder && (
+                          <IconAlertCircle
+                            size={16}
+                            className="inline ml-2 text-red-500"
+                            title="Data tidak lengkap"
+                          />
+                        )}
+                      </h3>
+                      <span className="text-xs text-gray-500">
+                        {order.created_at
+                          ? new Date(order.created_at).toLocaleDateString('id-ID', {
+                              day: 'numeric',
+                              month: 'short',
+                              year: 'numeric',
+                            })
+                          : 'N/A'}
+                      </span>
+                    </div>
+                    <p className="text-sm text-gray-600 mb-2">
+                      Total: Rp {order.total ? order.total.toLocaleString('id-ID') : 'N/A'}
+                    </p>
+                    <p className="text-xs text-gray-600 mb-3">
+                      Waktu:{' '}
+                      {order.created_at
+                        ? new Date(order.created_at).toLocaleTimeString('id-ID')
+                        : 'N/A'}
+                    </p>
+                    <div className="flex items-center justify-between mb-3">
+                      <span className="px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                        {order.paymentMethod?.toUpperCase() || 'N/A'}
+                      </span>
+                    </div>
+                    <button
+                      onClick={() => setOrderToPrint(order)}
+                      className={`flex w-full items-center justify-center py-1.5 px-3 rounded-md text-sm font-medium transition-all duration-200 ${
+                        isValidOrder
+                          ? 'bg-blue-100 text-blue-600 hover:bg-blue-200 hover:text-blue-700'
+                          : 'bg-gray-200 text-gray-400 cursor-not-allowed'
+                      }`}
+                      disabled={!isValidOrder}
+                      title={isValidOrder ? 'Cetak Struk' : 'Data tidak lengkap, tidak dapat mencetak'}
+                    >
+                      <IconPrinter size={16} className="mr-1" /> Cetak Struk
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Paginasi */}
+            {totalPages > 1 && (
+              <div className="flex justify-center items-center gap-2 mt-6">
+                <button
+                  onClick={() => handlePageChange(currentPage - 1)}
+                  disabled={currentPage === 1 || loading}
+                  className="px-4 py-2 bg-gray-100 text-gray-600 rounded-md hover:bg-gray-200 disabled:opacity-50 disabled:cursor-not-allowed text-sm font-medium"
+                >
+                  Sebelumnya
+                </button>
+                {Array.from({ length: totalPages }, (_, index) => (
+                  <button
+                    key={index + 1}
+                    onClick={() => handlePageChange(index + 1)}
+                    className={`px-4 py-2 rounded-md text-sm font-medium ${
+                      currentPage === index + 1
+                        ? 'bg-blue-600 text-white'
+                        : 'bg-gray-100 text-gray-600 hover:bg-blue-50 hover:text-blue-600'
+                    }`}
+                  >
+                    {index + 1}
                   </button>
-                </div>
-              );
-            })}
-          </div>
+                ))}
+                <button
+                  onClick={() => handlePageChange(currentPage + 1)}
+                  disabled={currentPage === totalPages || loading}
+                  className="px-4 py-2 bg-gray-100 text-gray-600 rounded-md hover:bg-gray-200 disabled:opacity-50 disabled:cursor-not-allowed text-sm font-medium"
+                >
+                  Selanjutnya
+                </button>
+              </div>
+            )}
+          </>
         )}
 
         <div style={{ display: 'none' }}>

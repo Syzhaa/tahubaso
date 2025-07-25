@@ -16,14 +16,27 @@ import {
   Legend,
 } from 'chart.js';
 
+// Register ChartJS components
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend);
+
+// Define ChartData type
+interface ChartData {
+  labels: string[];
+  datasets: {
+    label: string;
+    data: number[];
+    borderColor: string;
+    backgroundColor: string;
+    tension: number;
+  }[];
+}
 
 export default function ReportPage() {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const [totalSales, setTotalSales] = useState(0);
   const [totalExpenses, setTotalExpenses] = useState(0);
-  const [chartData, setChartData] = useState<any>({ labels: [], datasets: [] });
+  const [chartData, setChartData] = useState<ChartData>({ labels: [], datasets: [] });
   const today = new Date().toISOString().split('T')[0];
   const [startDate, setStartDate] = useState(today);
   const [endDate, setEndDate] = useState(today);

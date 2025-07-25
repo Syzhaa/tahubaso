@@ -4,7 +4,6 @@ import { useEffect, useState, useCallback } from 'react';
 import { supabase } from '@/lib/supabase';
 import { Menu } from '@/types';
 import { useRouter } from 'next/navigation';
-import Link from 'next/link';
 import MenuForm from '@/components/admin/MenuForm';
 import { User } from '@supabase/supabase-js';
 import Image from 'next/image';
@@ -61,7 +60,7 @@ export default function ManageMenuPage() {
   const handleSaveMenu = async (menuData: Partial<Menu>, imageFile?: File) => {
     setIsSubmitting(true);
     try {
-      let finalData = { ...menuData };
+      const finalData = { ...menuData }; // Changed from let to const
 
       if (imageFile) {
         const filePath = `${Date.now()}_${imageFile.name}`;
@@ -94,9 +93,9 @@ export default function ManageMenuPage() {
 
       await fetchMenus();
       handleCloseModal();
-    } catch (error: any) {
+    } catch (error: unknown) { // Changed from any to unknown
       console.error('--- DETAIL ERROR SUPABASE ---', error);
-      alert(`Gagal menyimpan menu. Pesan: ${error.message}`);
+      alert(`Gagal menyimpan menu. Pesan: ${(error as Error).message}`);
     } finally {
       setIsSubmitting(false);
     }
@@ -122,9 +121,9 @@ export default function ManageMenuPage() {
         }
 
         await fetchMenus();
-      } catch (error: any) {
+      } catch (error: unknown) { // Changed from any to unknown
         console.error('Error deleting menu:', error);
-        alert(`Gagal menghapus menu. Pesan: ${error.message}`);
+        alert(`Gagal menghapus menu. Pesan: ${(error as Error).message}`);
       }
     }
   };
@@ -152,8 +151,7 @@ export default function ManageMenuPage() {
       />
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
-          
-            <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3">
             <div className="relative w-full sm:w-64">
               <input
                 type="text"

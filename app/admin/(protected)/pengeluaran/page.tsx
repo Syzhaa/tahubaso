@@ -4,7 +4,6 @@ import { useEffect, useState, useCallback } from 'react';
 import { supabase } from '@/lib/supabase';
 import { Expense } from '@/types';
 import { useRouter } from 'next/navigation';
-import Link from 'next/link';
 import ExpenseForm from '@/components/admin/ExpenseForm';
 import { User } from '@supabase/supabase-js';
 
@@ -17,6 +16,8 @@ export default function ManageExpensesPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [dateRange, setDateRange] = useState({ start: '', end: '' });
+  const [currentPage, setCurrentPage] = useState(1); // State untuk halaman saat ini
+  const itemsPerPage = 6; // Batas 6 item per halaman
   const router = useRouter();
   const tokoId = 'tahubaso';
 
@@ -82,8 +83,8 @@ export default function ManageExpensesPage() {
       }
       await fetchExpenses();
       handleCloseModal();
-    } catch (error: any) {
-      alert(`Gagal menyimpan pengeluaran: ${error.message}`);
+    } catch (error: unknown) {
+      alert(`Gagal menyimpan pengeluaran: ${(error as Error).message}`);
     } finally {
       setIsSubmitting(false);
     }
@@ -100,9 +101,26 @@ export default function ManageExpensesPage() {
     }
   };
 
+  // Filter dan paginasi
   const filteredExpenses = expenses.filter((expense) =>
     expense.title.toLowerCase().includes(searchQuery.toLowerCase())
   );
+
+  // Hitung total halaman
+  const totalPages = Math.ceil(filteredExpenses.length / itemsPerPage);
+
+  // Ambil item untuk halaman saat ini
+  const paginatedExpenses = filteredExpenses.slice(
+    (currentPage - 1) * itemsPerPage,
+    currentPage * itemsPerPage
+  );
+
+  // Handler untuk navigasi halaman
+  const handlePageChange = (page: number) => {
+    if (page >= 1 && page <= totalPages) {
+      setCurrentPage(page);
+    }
+  };
 
   if (loading || !user) {
     return (
@@ -168,50 +186,85 @@ export default function ManageExpensesPage() {
           </div>
         </div>
 
-        {filteredExpenses.length === 0 ? (
+        {paginatedExpenses.length === 0 ? (
           <div className="bg-white rounded-lg shadow-sm p-6 text-center">
             <p className="text-gray-500 text-sm">
               Belum ada pengeluaran atau tidak ditemukan.
             </p>
           </div>
         ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-            {filteredExpenses.map((expense) => (
-              <div
-                key={expense.id}
-                className="bg-white rounded-lg shadow-sm p-4 hover:shadow-md transition-all duration-200"
-              >
-                <div className="flex justify-between items-start mb-3">
-                  <h3 className="text-sm font-semibold text-gray-800">
-                    {expense.title}
-                  </h3>
-                  <span className="text-xs text-gray-500">
-                    {new Date(expense.date).toLocaleDateString('id-ID')}
-                  </span>
+          <>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+              {paginatedExpenses.map((expense) => (
+                <div
+                  key={expense.id}
+                  className="bg-white rounded-lg shadow-sm p-4 hover:shadow-md transition-all duration-200"
+                >
+                  <div className="flex justify-between items-start mb-3">
+                    <h3 className="text-sm font-semibold text-gray-800">
+                      {expense.title}
+                    </h3>
+                    <span className="text-xs text-gray-500">
+                      {new Date(expense.date).toLocaleDateString('id-ID')}
+                    </span>
+                  </div>
+                  <p className="text-sm text-gray-600 mb-3">
+                    Rp {expense.amount.toLocaleString('id-ID')}
+                  </p>
+                  <p className="text-xs text-gray-500 mb-3 truncate">
+                    {expense.description || 'Tanpa deskripsi'}
+                  </p>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => handleOpenModal(expense)}
+                      className="flex-1 py-1.5 bg-blue-100 text-blue-600 rounded-md hover:bg-blue-200 hover:text-blue-700 px-6 transition-all duration-200 text-sm font-medium"
+                    >
+                      Edit
+                    </button>
+                    <button
+                      onClick={() => handleDeleteExpense(expense.id!)}
+                      className="flex-1 px-3 py-1.5 bg-red-100 text-red-600 rounded-md hover:bg-red-200 hover:text-red-700 transition-all duration-200 text-sm font-medium"
+                    >
+                      Hapus
+                    </button>
+                  </div>
                 </div>
-                <p className="text-sm text-gray-600 mb-3">
-                  Rp {expense.amount.toLocaleString('id-ID')}
-                </p>
-                <p className="text-xs text-gray-500 mb-3 truncate">
-                  {expense.description || 'Tanpa deskripsi'}
-                </p>
-                <div className="flex gap-2">
+              ))}
+            </div>
+
+            {/* Paginasi */}
+            {totalPages > 1 && (
+              <div className="flex justify-center items-center gap-2 mt-6">
+                <button
+                  onClick={() => handlePageChange(currentPage - 1)}
+                  disabled={currentPage === 1}
+                  className="px-3 py-1 bg-gray-100 text-gray-600 rounded-md hover:bg-gray-200 disabled:opacity-50 disabled:cursor-not-allowed text-sm"
+                >
+                  Sebelumnya
+                </button>
+                {Array.from({ length: totalPages }, (_, index) => (
                   <button
-                    onClick={() => handleOpenModal(expense)}
-                    className="flex-1 py-1.5 bg-blue-100 text-blue-600 rounded-md hover:bg-blue-200 hover:text-blue-700 px-6 transition-all duration-200 text-sm font-medium"
+                    key={index + 1}
+                    onClick={() => handlePageChange(index + 1)}
+                    className={`px-3 py-1 rounded-md text-sm ${
+                      currentPage === index + 1
+                        ? 'bg-blue-600 text-white'
+                        : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                    }`}
                   >
-                    Edit
+                    {index + 1}
                   </button>
-                  <button
-                    onClick={() => handleDeleteExpense(expense.id!)}
-                    className="flex-1 px-3 py-1.5 bg-red-100 text-red-600 rounded-md hover:bg-red-200 hover:text-red-700 transition-all duration-200 text-sm font-medium"
-                  >
-                    Hapus
-                  </button>
-                </div>
+                ))}
+                <button
+                  onClick={() => handlePageChange(currentPage + 1)}
+                  disabled={currentPage === totalPages}
+                  className="px-3 py-1 bg-gray-100 text-gray-600 rounded-md hover:bg-gray-200 disabled:opacity-50 disabled:cursor-not-allowed text-sm"
+                >
+                  Selanjutnya
+                </button>
               </div>
-            ))}
-          </div>
+            )}
+          </>
         )}
       </main>
     </div>
