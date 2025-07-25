@@ -34,6 +34,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     { href: '/admin/menu', label: 'Kelola Menu' },
     { href: '/admin/pengeluaran', label: 'Catatan Pengeluaran' },
     { href: '/admin/laporan', label: 'Laporan' },
+    { href: '/admin/riwayat', label: 'Riwayat Pesanan' },
   ];
 
   const getPageTitle = () => {
