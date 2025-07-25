@@ -1,16 +1,18 @@
 'use client';
-
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { supabase } from '@/lib/supabase';
 import { Order } from '@/types';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { User } from '@supabase/supabase-js';
 import { useReactToPrint } from 'react-to-print';
 import StrukPrint from './StrukPrint';
 
+interface PayloadData {
+  id?: number;
+  [key: string]: unknown;
+}
+
 export default function DashboardPage() {
-  const [, setUser] = useState<User | null>(null); // 'user' tidak dipakai, jadi diabaikan
   const [loading, setLoading] = useState(true);
   const [orders, setOrders] = useState<Order[]>([]);
   const [realtimeStatus, setRealtimeStatus] = useState<'disconnected' | 'connecting' | 'connected' | 'error'>('disconnected');
@@ -18,31 +20,32 @@ export default function DashboardPage() {
   const [processingOrders, setProcessingOrders] = useState<Set<number>>(new Set());
   const router = useRouter();
   const tokoId = 'tahubaso';
-
   const strukRef = useRef<HTMLDivElement>(null);
   const [orderToPrint, setOrderToPrint] = useState<Order | null>(null);
 
+  // Print configuration - KEMBALI KE contentRef
   const handleReactPrint = useReactToPrint({
-    content: () => strukRef.current,
+    contentRef: strukRef, // Menggunakan contentRef seperti sebelumnya
     documentTitle: `struk-pesanan-${orderToPrint?.id}`,
     onAfterPrint: () => {
-      addDebugLog(`✅ Selesai mencetak struk untuk pesanan #${orderToPrint?.id}`);
       setOrderToPrint(null);
+      addDebugLog(`✅ Selesai mencetak struk untuk pesanan #${orderToPrint?.id}`);
     },
   });
 
-  const addDebugLog = useCallback((message: string) => {
-    const timestamp = new Date().toLocaleTimeString('id-ID');
-    const logMessage = `[${timestamp}] ${message}`;
-    console.log(logMessage);
-    setDebugLogs((prev) => [...prev.slice(-9), logMessage]);
-  }, []);
-
+  // Memicu pencetakan saat orderToPrint diubah
   useEffect(() => {
     if (orderToPrint && strukRef.current) {
       handleReactPrint();
     }
   }, [orderToPrint, handleReactPrint]);
+
+  const addDebugLog = (message: string) => {
+    const timestamp = new Date().toLocaleTimeString();
+    const logMessage = `[${timestamp}] ${message}`;
+    console.log(logMessage);
+    setDebugLogs((prev) => [...prev.slice(-9), logMessage]);
+  };
 
   const fetchInitialOrders = useCallback(async () => {
     try {
@@ -53,17 +56,18 @@ export default function DashboardPage() {
         .eq('tokoId', tokoId)
         .in('status', ['baru', 'diproses'])
         .order('created_at', { ascending: false });
-
-      if (error) throw error;
-      
-      addDebugLog(`✅ Berhasil mengambil ${data?.length || 0} pesanan`);
-      setOrders(data as Order[]);
+      if (error) {
+        addDebugLog(`❌ Gagal mengambil pesanan: ${error.message}`);
+      } else {
+        addDebugLog(`✅ Berhasil mengambil ${data?.length || 0} pesanan`);
+        setOrders(data as Order[]);
+      }
     } catch (error) {
       if (error instanceof Error) {
         addDebugLog(`❌ Exception di fetchInitialOrders: ${error.message}`);
       }
     }
-  }, [tokoId, addDebugLog]);
+  }, [tokoId]);
 
   useEffect(() => {
     const checkUserAndFetchOrders = async () => {
@@ -73,7 +77,6 @@ export default function DashboardPage() {
           router.push('/admin/login');
           return;
         }
-        setUser(session.user);
         await fetchInitialOrders();
       } catch (error) {
         if (error instanceof Error) {
@@ -83,68 +86,56 @@ export default function DashboardPage() {
         setLoading(false);
       }
     };
-
     checkUserAndFetchOrders();
-
     addDebugLog('🔌 Menyiapkan langganan real-time...');
     const channel = supabase.channel('realtime-orders-admin');
-
     channel
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'orders', filter: `tokoId=eq.${tokoId}` },
-        (payload: {
-          eventType: 'INSERT' | 'UPDATE' | 'DELETE';
-          new: Order;
-          old: { id?: number };
-        }) => {
-          addDebugLog(`📡 Real-time event: ${payload.eventType}`);
-          fetchInitialOrders();
-
-          const orderId = payload.eventType === 'UPDATE' ? payload.new.id : payload.old?.id;
-
-          if (orderId) {
-            setProcessingOrders((prev) => {
-              const newSet = new Set(prev);
-              newSet.delete(orderId);
-              return newSet;
-            });
-          }
-
-          if (payload.eventType === 'INSERT') {
-            const newOrder = payload.new;
-            if ('Notification' in window && Notification.permission === 'granted') {
-              new Notification('Pesanan Baru!', { body: `Pesanan #${newOrder.id}` });
-            }
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'orders', filter: `tokoId=eq.${tokoId}` }, (payload) => {
+        addDebugLog(`📡 Real-time event: ${payload.eventType}`);
+        fetchInitialOrders();
+        const orderId = payload.eventType === 'UPDATE' 
+          ? (payload.new as PayloadData)?.id 
+          : (payload.old as PayloadData)?.id;
+        
+        if (orderId) {
+          setProcessingOrders((prev) => {
+            const newSet = new Set(prev);
+            newSet.delete(orderId);
+            return newSet;
+          });
+        }
+        if (payload.eventType === 'INSERT') {
+          const newOrder = payload.new as Order;
+          if ('Notification' in window && Notification.permission === 'granted') {
+            new Notification('Pesanan Baru!', { body: `Pesanan #${newOrder.id}` });
           }
         }
-      )
+      })
       .subscribe((status) => {
         if (status === 'SUBSCRIBED') setRealtimeStatus('connected');
         else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') setRealtimeStatus('error');
         else setRealtimeStatus('disconnected');
       });
-
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [router, fetchInitialOrders, tokoId, addDebugLog]);
+  }, [router, fetchInitialOrders, tokoId]);
 
   const handleUpdateStatus = async (orderId: number, newStatus: 'diproses' | 'selesai') => {
     if (processingOrders.has(orderId)) return;
-
     try {
       setProcessingOrders((prev) => new Set([...prev, orderId]));
       addDebugLog(`🔄 Mengupdate pesanan #${orderId} ke ${newStatus}`);
       const { error } = await supabase.from('orders').update({ status: newStatus }).eq('id', orderId);
-
-      if (error) throw error;
-      
-      addDebugLog(`✅ Permintaan update #${orderId} berhasil`);
+      if (error) {
+        addDebugLog(`❌ Gagal update pesanan #${orderId}: ${error.message}`);
+        alert(`Gagal mengupdate status: ${error.message}`);
+      } else {
+        addDebugLog(`✅ Permintaan update #${orderId} berhasil`);
+      }
     } catch (error) {
       if (error instanceof Error) {
         addDebugLog(`❌ Exception update pesanan #${orderId}: ${error.message}`);
-        alert(`Gagal mengupdate status: ${error.message}`);
       }
     } finally {
       setProcessingOrders((prev) => {
@@ -197,7 +188,6 @@ export default function DashboardPage() {
             </div>
           </div>
         </div>
-
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
           {orders.length === 0 ? (
             <div className="col-span-full text-center py-16 bg-white rounded-lg shadow-sm">
@@ -232,9 +222,8 @@ export default function DashboardPage() {
                   <p className="text-xs text-gray-600 mb-3">
                     {new Date(order.created_at).toLocaleString('id-ID')}
                   </p>
-
                   <ul className="mb-3 space-y-1">
-                    {order.items.map((item: { qty: number; name: string; price: number }, index: number) => (
+                    {order.items.map((item, index) => (
                       <li
                         key={index}
                         className="text-sm flex justify-between"
@@ -248,7 +237,6 @@ export default function DashboardPage() {
                       </li>
                     ))}
                   </ul>
-
                   <div className="border-t border-gray-200 pt-2 mb-4">
                     <div className="flex justify-between items-center">
                       <p className="font-semibold text-gray-800 text-sm">
@@ -268,7 +256,6 @@ export default function DashboardPage() {
                       )}
                     </div>
                   </div>
-
                   <div className="flex flex-col gap-2">
                     {order.status === 'baru' && (
                       <button
@@ -302,20 +289,18 @@ export default function DashboardPage() {
             })
           )}
         </div>
-        
-        <div className="mt-8 p-4 bg-gray-800 text-white rounded-lg shadow-inner">
-          <h3 className="font-semibold mb-2 text-sm">Log Aktivitas:</h3>
-          <pre className="text-xs font-mono overflow-x-auto h-32 bg-gray-900 p-2 rounded">
-            {debugLogs.join('\n')}
-          </pre>
-        </div>
-
+        {process.env.NODE_ENV === 'development' && debugLogs.length > 0 && (
+          <div className="mt-8 bg-gray-800 text-green-400 p-4 rounded-lg font-mono text-xs">
+            <h4 className="text-white mb-2">Debug Logs:</h4>
+            {debugLogs.map((log, index) => (
+              <div key={index}>{log}</div>
+            ))}
+          </div>
+        )}
       </main>
-
       <div style={{ display: 'none' }}>
         <StrukPrint ref={strukRef} order={orderToPrint} />
       </div>
-
       <style jsx global>{`
         .struk-container {
           width: 280px;
