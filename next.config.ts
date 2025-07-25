@@ -11,6 +11,14 @@ const nextConfig: NextConfig = {
         protocol: 'https',
         hostname: 'via.placeholder.com',
       },
+      {
+        protocol: 'https',
+        hostname: 'iili.io',
+      },
+      { // INI YANG TERAKHIR DITAMBAHKAN
+        protocol: 'https',
+        hostname: 'csczaropdidefplsylwt.supabase.co',
+      },
     ],
   },
 };

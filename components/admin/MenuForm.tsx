@@ -3,22 +3,20 @@
 
 import { useState, useEffect, FormEvent } from 'react';
 import { Menu } from '@/types';
-import { storage } from '@/lib/firebase';
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 
 interface MenuFormProps {
     isOpen: boolean;
     onClose: () => void;
-    onSave: (menu: Omit<Menu, 'id'>, imageFile?: File) => void;
+    onSave: (menu: Partial<Menu>, imageFile?: File) => void;
     menuToEdit: Menu | null;
+    isSubmitting: boolean;
 }
 
-export default function MenuForm({ isOpen, onClose, onSave, menuToEdit }: MenuFormProps) {
+export default function MenuForm({ isOpen, onClose, onSave, menuToEdit, isSubmitting }: MenuFormProps) {
     const [name, setName] = useState('');
     const [price, setPrice] = useState(0);
     const [isAvailable, setIsAvailable] = useState(true);
     const [imageFile, setImageFile] = useState<File | undefined>(undefined);
-    const [isSubmitting, setIsSubmitting] = useState(false);
 
     useEffect(() => {
         if (menuToEdit) {
@@ -26,7 +24,6 @@ export default function MenuForm({ isOpen, onClose, onSave, menuToEdit }: MenuFo
             setPrice(menuToEdit.price);
             setIsAvailable(menuToEdit.isAvailable);
         } else {
-            // Reset form for new menu
             setName('');
             setPrice(0);
             setIsAvailable(true);
@@ -36,26 +33,15 @@ export default function MenuForm({ isOpen, onClose, onSave, menuToEdit }: MenuFo
 
     const handleSubmit = async (e: FormEvent) => {
         e.preventDefault();
-        setIsSubmitting(true);
-        
-        const menuData = {
+        const menuData: Partial<Menu> = {
             name,
             price,
             isAvailable,
-            // imageUrl will be handled in the parent component
-            imageUrl: menuToEdit?.imageUrl || '',
-            tokoId: menuToEdit?.tokoId || 'tahubaso',
+            tokoId: 'tahubaso',
+            // Jika sedang mengedit, sertakan ID dan imageUrl yang ada
+            ...(menuToEdit && { id: menuToEdit.id, imageUrl: menuToEdit.imageUrl }),
         };
-
-        try {
-            await onSave(menuData, imageFile);
-            onClose(); // Close modal on success
-        } catch (error) {
-            console.error("Failed to save menu:", error);
-            alert("Gagal menyimpan menu.");
-        } finally {
-            setIsSubmitting(false);
-        }
+        onSave(menuData, imageFile);
     };
 
     if (!isOpen) return null;
@@ -75,7 +61,7 @@ export default function MenuForm({ isOpen, onClose, onSave, menuToEdit }: MenuFo
                     </div>
                     <div className="mb-4">
                         <label htmlFor="image" className="block text-gray-700 mb-2">Gambar Menu</label>
-                        <input type="file" id="image" onChange={(e) => e.target.files && setImageFile(e.target.files[0])} className="w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"/>
+                        <input type="file" accept="image/*" id="image" onChange={(e) => e.target.files && setImageFile(e.target.files[0])} className="w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"/>
                         {menuToEdit?.imageUrl && !imageFile && <p className="text-xs mt-2">Gambar saat ini: <a href={menuToEdit.imageUrl} target="_blank" rel="noopener noreferrer" className="text-blue-500">lihat gambar</a></p>}
                     </div>
                     <div className="mb-6 flex items-center">
