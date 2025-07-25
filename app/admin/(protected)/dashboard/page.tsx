@@ -5,10 +5,12 @@ import { supabase } from '@/lib/supabase';
 import { Order } from '@/types';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import { User } from '@supabase/supabase-js';
 import { useReactToPrint } from 'react-to-print';
 import StrukPrint from './StrukPrint';
 
 export default function DashboardPage() {
+  const [, setUser] = useState<User | null>(null); // 'user' tidak dipakai, jadi diabaikan
   const [loading, setLoading] = useState(true);
   const [orders, setOrders] = useState<Order[]>([]);
   const [realtimeStatus, setRealtimeStatus] = useState<'disconnected' | 'connecting' | 'connected' | 'error'>('disconnected');
@@ -17,33 +19,30 @@ export default function DashboardPage() {
   const router = useRouter();
   const tokoId = 'tahubaso';
 
-  // Ref and state for printing
   const strukRef = useRef<HTMLDivElement>(null);
   const [orderToPrint, setOrderToPrint] = useState<Order | null>(null);
 
-  // Print configuration
   const handleReactPrint = useReactToPrint({
-    contentRef: strukRef,
+    content: () => strukRef.current,
     documentTitle: `struk-pesanan-${orderToPrint?.id}`,
     onAfterPrint: () => {
-      setOrderToPrint(null);
       addDebugLog(`✅ Selesai mencetak struk untuk pesanan #${orderToPrint?.id}`);
+      setOrderToPrint(null);
     },
   });
 
-  // Trigger print when orderToPrint is set
+  const addDebugLog = useCallback((message: string) => {
+    const timestamp = new Date().toLocaleTimeString('id-ID');
+    const logMessage = `[${timestamp}] ${message}`;
+    console.log(logMessage);
+    setDebugLogs((prev) => [...prev.slice(-9), logMessage]);
+  }, []);
+
   useEffect(() => {
     if (orderToPrint && strukRef.current) {
       handleReactPrint();
     }
   }, [orderToPrint, handleReactPrint]);
-
-  const addDebugLog = (message: string) => {
-    const timestamp = new Date().toLocaleTimeString();
-    const logMessage = `[${timestamp}] ${message}`;
-    console.log(logMessage);
-    setDebugLogs((prev) => [...prev.slice(-9), logMessage]);
-  };
 
   const fetchInitialOrders = useCallback(async () => {
     try {
@@ -55,18 +54,16 @@ export default function DashboardPage() {
         .in('status', ['baru', 'diproses'])
         .order('created_at', { ascending: false });
 
-      if (error) {
-        addDebugLog(`❌ Gagal mengambil pesanan: ${error.message}`);
-      } else {
-        addDebugLog(`✅ Berhasil mengambil ${data?.length || 0} pesanan`);
-        setOrders(data as Order[]);
-      }
+      if (error) throw error;
+      
+      addDebugLog(`✅ Berhasil mengambil ${data?.length || 0} pesanan`);
+      setOrders(data as Order[]);
     } catch (error) {
       if (error instanceof Error) {
         addDebugLog(`❌ Exception di fetchInitialOrders: ${error.message}`);
       }
     }
-  }, [tokoId]);
+  }, [tokoId, addDebugLog]);
 
   useEffect(() => {
     const checkUserAndFetchOrders = async () => {
@@ -76,6 +73,7 @@ export default function DashboardPage() {
           router.push('/admin/login');
           return;
         }
+        setUser(session.user);
         await fetchInitialOrders();
       } catch (error) {
         if (error instanceof Error) {
@@ -92,30 +90,35 @@ export default function DashboardPage() {
     const channel = supabase.channel('realtime-orders-admin');
 
     channel
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'orders', filter: `tokoId=eq.${tokoId}` }, (payload) => {
-        addDebugLog(`📡 Real-time event: ${payload.eventType}`);
-        fetchInitialOrders();
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'orders', filter: `tokoId=eq.${tokoId}` },
+        (payload: {
+          eventType: 'INSERT' | 'UPDATE' | 'DELETE';
+          new: Order;
+          old: { id?: number };
+        }) => {
+          addDebugLog(`📡 Real-time event: ${payload.eventType}`);
+          fetchInitialOrders();
 
-        // Type assertion to safely access id property
-        const orderId = payload.eventType === 'UPDATE' 
-          ? (payload.new as any)?.id 
-          : (payload.old as any)?.id;
-        
-        if (orderId) {
-          setProcessingOrders((prev) => {
-            const newSet = new Set(prev);
-            newSet.delete(orderId);
-            return newSet;
-          });
-        }
+          const orderId = payload.eventType === 'UPDATE' ? payload.new.id : payload.old?.id;
 
-        if (payload.eventType === 'INSERT') {
-          const newOrder = payload.new as Order;
-          if ('Notification' in window && Notification.permission === 'granted') {
-            new Notification('Pesanan Baru!', { body: `Pesanan #${newOrder.id}` });
+          if (orderId) {
+            setProcessingOrders((prev) => {
+              const newSet = new Set(prev);
+              newSet.delete(orderId);
+              return newSet;
+            });
+          }
+
+          if (payload.eventType === 'INSERT') {
+            const newOrder = payload.new;
+            if ('Notification' in window && Notification.permission === 'granted') {
+              new Notification('Pesanan Baru!', { body: `Pesanan #${newOrder.id}` });
+            }
           }
         }
-      })
+      )
       .subscribe((status) => {
         if (status === 'SUBSCRIBED') setRealtimeStatus('connected');
         else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') setRealtimeStatus('error');
@@ -125,7 +128,7 @@ export default function DashboardPage() {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [router, fetchInitialOrders, tokoId]);
+  }, [router, fetchInitialOrders, tokoId, addDebugLog]);
 
   const handleUpdateStatus = async (orderId: number, newStatus: 'diproses' | 'selesai') => {
     if (processingOrders.has(orderId)) return;
@@ -133,18 +136,15 @@ export default function DashboardPage() {
     try {
       setProcessingOrders((prev) => new Set([...prev, orderId]));
       addDebugLog(`🔄 Mengupdate pesanan #${orderId} ke ${newStatus}`);
-
       const { error } = await supabase.from('orders').update({ status: newStatus }).eq('id', orderId);
 
-      if (error) {
-        addDebugLog(`❌ Gagal update pesanan #${orderId}: ${error.message}`);
-        alert(`Gagal mengupdate status: ${error.message}`);
-      } else {
-        addDebugLog(`✅ Permintaan update #${orderId} berhasil`);
-      }
+      if (error) throw error;
+      
+      addDebugLog(`✅ Permintaan update #${orderId} berhasil`);
     } catch (error) {
       if (error instanceof Error) {
         addDebugLog(`❌ Exception update pesanan #${orderId}: ${error.message}`);
+        alert(`Gagal mengupdate status: ${error.message}`);
       }
     } finally {
       setProcessingOrders((prev) => {
@@ -234,7 +234,7 @@ export default function DashboardPage() {
                   </p>
 
                   <ul className="mb-3 space-y-1">
-                    {order.items.map((item, index) => (
+                    {order.items.map((item: { qty: number; name: string; price: number }, index: number) => (
                       <li
                         key={index}
                         className="text-sm flex justify-between"
@@ -302,19 +302,16 @@ export default function DashboardPage() {
             })
           )}
         </div>
+        
+        <div className="mt-8 p-4 bg-gray-800 text-white rounded-lg shadow-inner">
+          <h3 className="font-semibold mb-2 text-sm">Log Aktivitas:</h3>
+          <pre className="text-xs font-mono overflow-x-auto h-32 bg-gray-900 p-2 rounded">
+            {debugLogs.join('\n')}
+          </pre>
+        </div>
 
-        {/* Debug logs - only show in development */}
-        {process.env.NODE_ENV === 'development' && debugLogs.length > 0 && (
-          <div className="mt-8 bg-gray-800 text-green-400 p-4 rounded-lg font-mono text-xs">
-            <h4 className="text-white mb-2">Debug Logs:</h4>
-            {debugLogs.map((log, index) => (
-              <div key={index}>{log}</div>
-            ))}
-          </div>
-        )}
       </main>
 
-      {/* Hidden print component */}
       <div style={{ display: 'none' }}>
         <StrukPrint ref={strukRef} order={orderToPrint} />
       </div>
