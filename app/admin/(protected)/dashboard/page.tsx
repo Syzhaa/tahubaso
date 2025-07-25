@@ -10,7 +10,6 @@ import { useReactToPrint } from 'react-to-print';
 import StrukPrint from './StrukPrint';
 
 export default function DashboardPage() {
-  const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const [orders, setOrders] = useState<Order[]>([]);
   const [realtimeStatus, setRealtimeStatus] = useState<'disconnected' | 'connecting' | 'connected' | 'error'>('disconnected');
@@ -63,8 +62,10 @@ export default function DashboardPage() {
         addDebugLog(`✅ Berhasil mengambil ${data?.length || 0} pesanan`);
         setOrders(data as Order[]);
       }
-    } catch (err: any) {
-      addDebugLog(`❌ Exception di fetchInitialOrders: ${err.message}`);
+    } catch (error) {
+      if (error instanceof Error) {
+        addDebugLog(`❌ Exception di fetchInitialOrders: ${error.message}`);
+      }
     }
   }, [tokoId]);
 
@@ -76,10 +77,12 @@ export default function DashboardPage() {
           router.push('/admin/login');
           return;
         }
-        setUser(session.user);
+        // Remove unused user state assignment
         await fetchInitialOrders();
-      } catch (err: any) {
-        addDebugLog(`❌ Eror di checkUserAndFetchOrders: ${err.message}`);
+      } catch (error) {
+        if (error instanceof Error) {
+          addDebugLog(`❌ Eror di checkUserAndFetchOrders: ${error.message}`);
+        }
       } finally {
         setLoading(false);
       }
@@ -137,8 +140,10 @@ export default function DashboardPage() {
       } else {
         addDebugLog(`✅ Permintaan update #${orderId} berhasil`);
       }
-    } catch (err: any) {
-      addDebugLog(`❌ Exception update pesanan #${orderId}: ${err.message}`);
+    } catch (error) {
+      if (error instanceof Error) {
+        addDebugLog(`❌ Exception update pesanan #${orderId}: ${error.message}`);
+      }
     } finally {
       setProcessingOrders((prev) => {
         const newSet = new Set(prev);
@@ -295,6 +300,16 @@ export default function DashboardPage() {
             })
           )}
         </div>
+
+        {/* Debug logs - only show in development */}
+        {process.env.NODE_ENV === 'development' && debugLogs.length > 0 && (
+          <div className="mt-8 bg-gray-800 text-green-400 p-4 rounded-lg font-mono text-xs">
+            <h4 className="text-white mb-2">Debug Logs:</h4>
+            {debugLogs.map((log, index) => (
+              <div key={index}>{log}</div>
+            ))}
+          </div>
+        )}
       </main>
 
       {/* Hidden print component */}

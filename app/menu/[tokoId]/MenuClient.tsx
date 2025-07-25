@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useCallback } from 'react';
 import Image from 'next/image';
 import { supabase } from '@/lib/supabase';
 
@@ -44,7 +44,7 @@ export default function MenuClient({ menus, tokoId }: { menus: Menu[], tokoId: s
 
   // Real-time order tracking
   useEffect(() => {
-    if (!currentOrder) return;
+    if (!currentOrder?.id) return;
 
     console.log('Setting up real-time tracking for order:', currentOrder.id);
 
@@ -93,10 +93,10 @@ export default function MenuClient({ menus, tokoId }: { menus: Menu[], tokoId: s
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [currentOrder?.id]);
+  }, [currentOrder?.id]); // Fixed: Added currentOrder?.id as dependency
 
   // --- Cart Management ---
-  const addToCart = (menu: Menu) => {
+  const addToCart = useCallback((menu: Menu) => {
     setCart((prevCart) => {
       const existingItem = prevCart.find((item) => item.menuId === menu.id!);
       if (existingItem) {
@@ -106,9 +106,9 @@ export default function MenuClient({ menus, tokoId }: { menus: Menu[], tokoId: s
       }
       return [...prevCart, { menuId: menu.id!, name: menu.name, price: menu.price, qty: 1 }];
     });
-  };
+  }, []);
 
-  const removeFromCart = (menuId: string) => {
+  const removeFromCart = useCallback((menuId: string) => {
     setCart((prevCart) => {
       const existingItem = prevCart.find((item) => item.menuId === menuId);
       if (existingItem && existingItem.qty > 1) {
@@ -118,7 +118,7 @@ export default function MenuClient({ menus, tokoId }: { menus: Menu[], tokoId: s
       }
       return prevCart.filter((item) => item.menuId !== menuId);
     });
-  };
+  }, []);
 
   const total = useMemo(
     () => cart.reduce((sum, item) => sum + item.price * item.qty, 0),
@@ -159,7 +159,7 @@ export default function MenuClient({ menus, tokoId }: { menus: Menu[], tokoId: s
       }
 
       setStep('success');
-    } catch (error: unknown) { // Changed from any to unknown
+    } catch (error: unknown) { // Fixed: Changed from any to unknown
       console.error('Failed to submit order:', error);
       alert(`Gagal mengirim pesanan: ${(error as Error).message || 'Unknown error'}`);
     } finally {
