@@ -5,7 +5,22 @@ import Image from 'next/image';
 import { supabase } from '@/lib/supabase';
 
 // Define types for Menu, CartItem, and Order
-interface Menu {
+export interface Order {
+  id: number;
+  status: 'baru' | 'diproses' | 'selesai';
+  items: {
+    menuId: string;
+    name: string;
+    price: number;
+    qty: number;
+  }[];
+  total: number;
+  paymentMethod?: 'cash' | 'QRIS';
+  createdAt: string; // Standardized to camelCase
+  updated_at?: string;
+}
+
+export interface Menu {
   id: string;
   name: string;
   description?: string;
@@ -13,21 +28,11 @@ interface Menu {
   imageUrl?: string;
 }
 
-interface CartItem {
+export interface CartItem {
   menuId: string;
   name: string;
   price: number;
   qty: number;
-}
-
-interface Order {
-  id: number;
-  status: 'baru' | 'diproses' | 'selesai';
-  items: CartItem[];
-  total: number;
-  paymentMethod?: 'cash' | 'QRIS';
-  created_at: string;
-  updated_at?: string;
 }
 
 export default function MenuClient({ menus, tokoId }: { menus: Menu[], tokoId: string }) {
