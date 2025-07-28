@@ -318,7 +318,6 @@ export default function DashboardPage() {
                       </li>
                     ))}
                   </ul>
-
                   <div className="border-t border-gray-200 pt-2 mb-4">
                     <div className="flex justify-between items-center">
                       <p className="font-semibold text-gray-800 text-sm">
