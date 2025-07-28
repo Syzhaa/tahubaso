@@ -14,6 +14,7 @@ import {
   Title,
   Tooltip,
   Legend,
+  ChartData,
 } from 'chart.js';
 
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend);
@@ -23,15 +24,52 @@ export default function ReportPage() {
   const [loading, setLoading] = useState(true);
   const [totalSales, setTotalSales] = useState(0);
   const [totalExpenses, setTotalExpenses] = useState(0);
-  const [chartData, setChartData] = useState<any>({ labels: [], datasets: [] });
+  const [chartData, setChartData] = useState<ChartData<'line', number[], string>>({
+    labels: [],
+    datasets: [
+      {
+        label: 'Penjualan',
+        data: [],
+        borderColor: 'rgb(34, 197, 94)',
+        backgroundColor: 'rgba(34, 197, 94, 0.2)',
+        tension: 0.4,
+      },
+      {
+        label: 'Pengeluaran',
+        data: [],
+        borderColor: 'rgb(239, 68, 68)',
+        backgroundColor: 'rgba(239, 68, 68, 0.2)',
+        tension: 0.4,
+      },
+    ],
+  });
   const today = new Date().toISOString().split('T')[0];
   const [startDate, setStartDate] = useState(today);
   const [endDate, setEndDate] = useState(today);
   const [filterType, setFilterType] = useState<'day' | 'month' | 'year'>('day');
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 6;
   const router = useRouter();
+
+  interface Order {
+    total: number;
+    created_at: string;
+  }
+
+  interface Expense {
+    amount: number;
+    date: string;
+  }
 
   const fetchReportData = useCallback(async (start: string, end: string, type: 'day' | 'month' | 'year') => {
     setLoading(true);
+
+    // Validate dates
+    if (!start || !end || new Date(start) > new Date(end)) {
+      alert('Tanggal mulai tidak boleh setelah tanggal akhir atau kosong');
+      setLoading(false);
+      return;
+    }
 
     // Fetch sales data
     const { data: salesData, error: salesError } = await supabase
@@ -39,9 +77,13 @@ export default function ReportPage() {
       .select('total, created_at')
       .eq('status', 'selesai')
       .gte('created_at', new Date(start).toISOString())
-      .lte('created_at', new Date(`${end}T23:59:59.999Z`).toISOString());
+      .lte('created_at', `${end}T23:59:59.999Z`);
 
-    if (salesError) console.error('Error fetching sales:', salesError);
+    if (salesError) {
+      console.error('Error fetching sales:', salesError.message);
+      setLoading(false);
+      return;
+    }
 
     // Fetch expenses data
     const { data: expensesData, error: expensesError } = await supabase
@@ -50,11 +92,15 @@ export default function ReportPage() {
       .gte('date', start)
       .lte('date', end);
 
-    if (expensesError) console.error('Error fetching expenses:', expensesError);
+    if (expensesError) {
+      console.error('Error fetching expenses:', expensesError.message);
+      setLoading(false);
+      return;
+    }
 
     // Process data for totals
-    const sales = salesData?.reduce((sum, current) => sum + current.total, 0) || 0;
-    const expenses = expensesData?.reduce((sum, current) => sum + current.amount, 0) || 0;
+    const sales = salesData?.reduce((sum, current: Order) => sum + current.total, 0) || 0;
+    const expenses = expensesData?.reduce((sum, current: Expense) => sum + current.amount, 0) || 0;
     setTotalSales(sales);
     setTotalExpenses(expenses);
 
@@ -83,12 +129,12 @@ export default function ReportPage() {
         labels.push(dateStr);
         const dailySales =
           salesData
-            ?.filter((s) => s.created_at.split('T')[0] === dateStr)
-            .reduce((sum, current) => sum + current.total, 0) || 0;
+            ?.filter((s: Order) => s.created_at.split('T')[0] === dateStr)
+            .reduce((sum, current: Order) => sum + current.total, 0) || 0;
         const dailyExpenses =
           expensesData
-            ?.filter((e) => e.date === dateStr)
-            .reduce((sum, current) => sum + current.amount, 0) || 0;
+            ?.filter((e: Expense) => e.date === dateStr)
+            .reduce((sum, current: Expense) => sum + current.amount, 0) || 0;
         salesByPeriod.push(dailySales);
         expensesByPeriod.push(dailyExpenses);
       }
@@ -101,14 +147,14 @@ export default function ReportPage() {
       salesByPeriod = Array(12).fill(0);
       expensesByPeriod = Array(12).fill(0);
 
-      salesData?.forEach((sale) => {
+      salesData?.forEach((sale: Order) => {
         const month = new Date(sale.created_at).getMonth();
         if (new Date(sale.created_at).getFullYear() === startYear) {
           salesByPeriod[month] += sale.total;
         }
       });
 
-      expensesData?.forEach((expense) => {
+      expensesData?.forEach((expense: Expense) => {
         const month = new Date(expense.date).getMonth();
         if (new Date(expense.date).getFullYear() === startYear) {
           expensesByPeriod[month] += expense.amount;
@@ -116,19 +162,26 @@ export default function ReportPage() {
       });
     }
 
+    // Apply pagination
+    const startIndex = (currentPage - 1) * itemsPerPage;
+    const endIndex = startIndex + itemsPerPage;
+    const paginatedLabels = type === 'day' ? labels : labels.slice(startIndex, endIndex);
+    const paginatedSales = type === 'day' ? salesByPeriod : salesByPeriod.slice(startIndex, endIndex);
+    const paginatedExpenses = type === 'day' ? expensesByPeriod : expensesByPeriod.slice(startIndex, endIndex);
+
     setChartData({
-      labels,
+      labels: paginatedLabels,
       datasets: [
         {
           label: 'Penjualan',
-          data: salesByPeriod,
+          data: paginatedSales,
           borderColor: 'rgb(34, 197, 94)',
           backgroundColor: 'rgba(34, 197, 94, 0.2)',
           tension: 0.4,
         },
         {
           label: 'Pengeluaran',
-          data: expensesByPeriod,
+          data: paginatedExpenses,
           borderColor: 'rgb(239, 68, 68)',
           backgroundColor: 'rgba(239, 68, 68, 0.2)',
           tension: 0.4,
@@ -137,7 +190,7 @@ export default function ReportPage() {
     });
 
     setLoading(false);
-  }, []);
+  }, [currentPage]);
 
   useEffect(() => {
     const checkUser = async () => {
@@ -153,6 +206,11 @@ export default function ReportPage() {
   }, [router, fetchReportData, startDate, endDate, filterType]);
 
   const handleFilter = () => {
+    if (new Date(startDate) > new Date(endDate)) {
+      alert('Tanggal mulai tidak boleh setelah tanggal akhir');
+      return;
+    }
+    setCurrentPage(1); // Reset to first page on new filter
     fetchReportData(startDate, endDate, filterType);
   };
 
@@ -160,6 +218,7 @@ export default function ReportPage() {
     setStartDate(today);
     setEndDate(today);
     setFilterType('day');
+    setCurrentPage(1); // Reset to first page
     fetchReportData(today, today, 'day');
   };
 
@@ -174,6 +233,7 @@ export default function ReportPage() {
     setStartDate(firstDay);
     setEndDate(lastDay);
     setFilterType('month');
+    setCurrentPage(1); // Reset to first page
     fetchReportData(firstDay, lastDay, 'month');
   };
 
@@ -186,12 +246,29 @@ export default function ReportPage() {
     setStartDate(firstDay);
     setEndDate(lastDay);
     setFilterType('year');
+    setCurrentPage(1); // Reset to first page
     fetchReportData(firstDay, lastDay, 'year');
+  };
+
+  // Safe access to chartData.labels with fallback
+  const chartLabelsLength = chartData.labels?.length || 0;
+  const totalPages = Math.ceil(chartLabelsLength / itemsPerPage);
+  
+  const handlePreviousPage = () => {
+    if (currentPage > 1) {
+      setCurrentPage(currentPage - 1);
+    }
+  };
+
+  const handleNextPage = () => {
+    if (currentPage < totalPages) {
+      setCurrentPage(currentPage + 1);
+    }
   };
 
   const netProfit = totalSales - totalExpenses;
 
-  if (loading && !user) {
+  if (!user) {
     return (
       <div className="flex items-center justify-center min-h-screen">
         <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-blue-600"></div>
@@ -343,17 +420,50 @@ export default function ReportPage() {
                       beginAtZero: true,
                       ticks: {
                         callback: (value) =>
-                          `Rp ${value.toLocaleString('id-ID')}`,
+                          `Rp ${Number(value).toLocaleString('id-ID')}`,
                         font: { size: 10 },
                       },
                     },
                     x: {
-                      ticks: { font: { size: 10 } },
+                      ticks: {
+                        font: { size: 10 },
+                        maxRotation: 45,
+                        minRotation: 45,
+                      },
                     },
                   },
                 }}
               />
             </div>
+            {filterType !== 'day' && totalPages > 1 && (
+              <div className="flex justify-between items-center mt-4">
+                <button
+                  onClick={handlePreviousPage}
+                  disabled={currentPage === 1}
+                  className={`px-4 py-2 rounded-md text-sm font-medium transition-all duration-200 ${
+                    currentPage === 1
+                      ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
+                      : 'bg-blue-100 text-blue-600 hover:bg-blue-200'
+                  }`}
+                >
+                  Previous
+                </button>
+                <span className="text-sm text-gray-600">
+                  Page {currentPage} of {totalPages}
+                </span>
+                <button
+                  onClick={handleNextPage}
+                  disabled={currentPage === totalPages}
+                  className={`px-4 py-2 rounded-md text-sm font-medium transition-all duration-200 ${
+                    currentPage === totalPages
+                      ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
+                      : 'bg-blue-100 text-blue-600 hover:bg-blue-200'
+                  }`}
+                >
+                  Next
+                </button>
+              </div>
+            )}
           </div>
         </>
       )}

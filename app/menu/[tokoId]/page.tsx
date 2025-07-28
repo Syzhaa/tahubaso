@@ -14,7 +14,16 @@ async function getMenus(tokoId: string): Promise<Menu[]> {
     console.error('Error fetching menus:', error);
     return [];
   }
-  return data || [];
+  
+  // Transform and filter the data to ensure it matches our Menu type
+  const validMenus: Menu[] = (data || [])
+    .filter(menu => menu.id !== undefined && menu.id !== null)
+    .map(menu => ({
+      ...menu,
+      id: menu.id as string // Type assertion since we've filtered out undefined/null
+    }));
+  
+  return validMenus;
 }
 
 // PERBAIKAN UNTUK NEXT.JS 15: params sekarang Promise

@@ -2,9 +2,9 @@
 
 import { useState, useMemo, useEffect } from 'react';
 import Image from 'next/image';
-import { supabase } from '@/lib/supabase'; // Import real supabase client
+import { supabase } from '@/lib/supabase';
 
-// Define placeholder types for Menu and CartItem if they are not globally available
+// Define placeholder types for Menu, CartItem, and Order
 interface Menu {
   id: string;
   name: string;
@@ -36,6 +36,8 @@ export default function MenuClient({ menus, tokoId }: { menus: Menu[], tokoId: s
   const [step, setStep] = useState<'menu' | 'payment' | 'qris' | 'success' | 'tracking'>('menu');
   const [showCart, setShowCart] = useState(false);
   const [currentOrder, setCurrentOrder] = useState<Order | null>(null);
+  const [currentPage, setCurrentPage] = useState(1); // Track current page
+  const menusPerPage = 5; // Limit to 5 menus per page
 
   // Real-time order tracking
   useEffect(() => {
@@ -87,7 +89,7 @@ export default function MenuClient({ menus, tokoId }: { menus: Menu[], tokoId: s
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [currentOrder?.id]);
+  }, [currentOrder]); // Added currentOrder to dependency array
 
   // --- Cart Management ---
   const addToCart = (menu: Menu) => {
@@ -153,9 +155,10 @@ export default function MenuClient({ menus, tokoId }: { menus: Menu[], tokoId: s
       }
       
       setStep('success');
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error("Failed to submit order:", error);
-      alert(`Gagal mengirim pesanan: ${error.message || 'Unknown error'}`);
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      alert(`Gagal mengirim pesanan: ${errorMessage}`);
     } finally {
       setIsSubmitting(false);
     }
@@ -171,6 +174,25 @@ export default function MenuClient({ menus, tokoId }: { menus: Menu[], tokoId: s
   const startTracking = () => {
     setStep('tracking');
   }
+
+  // --- Pagination Logic ---
+  const totalPages = Math.ceil(menus.length / menusPerPage);
+  const paginatedMenus = useMemo(() => {
+    const startIndex = (currentPage - 1) * menusPerPage;
+    return menus.slice(startIndex, startIndex + menusPerPage);
+  }, [menus, currentPage]);
+
+  const handlePreviousPage = () => {
+    if (currentPage > 1) {
+      setCurrentPage(currentPage - 1);
+    }
+  };
+
+  const handleNextPage = () => {
+    if (currentPage < totalPages) {
+      setCurrentPage(currentPage + 1);
+    }
+  };
 
   // --- Render Methods for Different Steps ---
 
@@ -377,7 +399,7 @@ export default function MenuClient({ menus, tokoId }: { menus: Menu[], tokoId: s
           {/* Menu Items */}
           <div className="w-full lg:w-3/5 xl:w-2/3">
             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
-              {menus.map((menu) => (
+              {paginatedMenus.map((menu) => (
                 <div key={menu.id} className="bg-white border border-gray-200 rounded-xl shadow-sm hover:shadow-xl transition-all duration-300 flex flex-col overflow-hidden group">
                   {menu.imageUrl && (
                     <div className="relative w-full h-48 overflow-hidden">
@@ -386,7 +408,7 @@ export default function MenuClient({ menus, tokoId }: { menus: Menu[], tokoId: s
                           alt={menu.name}
                           fill
                           className="object-cover transition-transform duration-300 group-hover:scale-105"
-                           onError={(e) => { e.currentTarget.src = `https://placehold.co/400x300/e0e0e0/777?text=${menu.name.replace(/\s/g,'+')}`; }}
+                          onError={(e) => { e.currentTarget.src = `https://placehold.co/400x300/e0e0e0/777?text=${menu.name.replace(/\s/g,'+')}`; }}
                         />
                     </div>
                   )}
@@ -410,6 +432,28 @@ export default function MenuClient({ menus, tokoId }: { menus: Menu[], tokoId: s
                 </div>
               ))}
             </div>
+            {/* Pagination Controls */}
+            {totalPages > 1 && (
+              <div className="flex justify-between items-center mt-6">
+                <button
+                  onClick={handlePreviousPage}
+                  disabled={currentPage === 1}
+                  className="px-4 py-2 bg-gray-200 text-gray-600 rounded-md disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-300 transition-all duration-200 text-sm font-medium"
+                >
+                  Sebelumnya
+                </button>
+                <span className="text-sm text-gray-600">
+                  Halaman {currentPage} dari {totalPages}
+                </span>
+                <button
+                  onClick={handleNextPage}
+                  disabled={currentPage === totalPages}
+                  className="px-4 py-2 bg-gray-200 text-gray-600 rounded-md disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-300 transition-all duration-200 text-sm font-medium"
+                >
+                  Selanjutnya
+                </button>
+              </div>
+            )}
           </div>
 
           {/* Shopping Cart - Desktop */}
@@ -522,7 +566,6 @@ export default function MenuClient({ menus, tokoId }: { menus: Menu[], tokoId: s
       )}
     </>
   );
-
 
   // --- Main Render Logic ---
   switch (step) {

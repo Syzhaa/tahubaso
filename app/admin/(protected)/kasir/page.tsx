@@ -1,27 +1,26 @@
 'use client';
 
-import { useEffect, useState, useRef, useMemo, useCallback } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { supabase } from '@/lib/supabase';
 import { Order, Menu, CartItem } from '@/types';
 import { useRouter } from 'next/navigation';
-import { User } from '@supabase/supabase-js';
-import { useReactToPrint } from 'react-to-print';
-import StrukPrint from './StrukPrint';
+
+// Define extended menu type with category
+interface MenuWithCategory extends Menu {
+  id: string; // Ensure id is required
+  category?: string;
+}
 
 export default function KasirPage() {
-  const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
-  const [menus, setMenus] = useState<Menu[]>([]);
+  const [menus, setMenus] = useState<MenuWithCategory[]>([]);
   const [cart, setCart] = useState<CartItem[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('all');
+
   const [paymentMethod, setPaymentMethod] = useState<'cash' | 'QRIS'>('cash');
   const router = useRouter();
   const tokoId = 'tahubaso';
-
-  // Ref for printing
-  const strukRef = useRef<HTMLDivElement>(null);
-  const [orderToPrint, setOrderToPrint] = useState<Order | null>(null);
 
   // Calculate cart totals
   const cartTotal = useMemo(
@@ -50,25 +49,8 @@ export default function KasirPage() {
   // Get unique categories
   const categories = useMemo(() => {
     const cats = ['all', ...new Set(menus.map((menu) => menu.category).filter(Boolean))];
-    return cats;
+    return cats as string[];
   }, [menus]);
-
-  // Print configuration
-  const handleReactPrint = useReactToPrint({
-    contentRef: strukRef,
-    documentTitle: `struk-pesanan-${orderToPrint?.id}`,
-    onAfterPrint: () => setOrderToPrint(null),
-  });
-
-  const triggerPrint = useCallback(() => {
-    if (orderToPrint && strukRef.current) {
-      handleReactPrint();
-    }
-  }, [orderToPrint, handleReactPrint]);
-
-  useEffect(() => {
-    triggerPrint();
-  }, [triggerPrint]);
 
   // Fetch menus
   const fetchMenus = async () => {
@@ -80,9 +62,9 @@ export default function KasirPage() {
         .order('created_at', { ascending: true });
 
       if (error) throw error;
-      setMenus(data as Menu[]);
-    } catch (err: any) {
-      console.error('Error fetching menus:', err.message);
+      setMenus(data as MenuWithCategory[]);
+    } catch (err: unknown) {
+      console.error('Error fetching menus:', (err as Error).message);
     }
   };
 
@@ -94,10 +76,9 @@ export default function KasirPage() {
           router.push('/admin/login');
           return;
         }
-        setUser(session.user);
         await fetchMenus();
-      } catch (err: any) {
-        console.error('Error in checkUserAndFetchData:', err.message);
+      } catch (err: unknown) {
+        console.error('Error in checkUserAndFetchData:', (err as Error).message);
       } finally {
         setLoading(false);
       }
@@ -107,7 +88,9 @@ export default function KasirPage() {
   }, [router, tokoId]);
 
   // Cart functions
-  const addToCart = (menu: Menu) => {
+  const addToCart = (menu: MenuWithCategory) => {
+    if (!menu.id) return; // Guard clause to ensure menu has an id
+    
     setCart((prev) => {
       const existingItem = prev.find((item) => item.menuId === menu.id);
       if (existingItem) {
@@ -160,24 +143,23 @@ export default function KasirPage() {
         .from('orders')
         .insert(newOrder)
         .select();
+        
       if (error) throw error;
 
+      alert(`Pesanan baru #${(data[0] as Order).id} berhasil dibuat!`);
       setCart([]);
       setPaymentMethod('cash');
-    } catch (err: any) {
-      console.error('Error creating order:', err.message);
+
+    } catch (err: unknown) {
+      console.error('Error creating order:', (err as Error).message);
       alert('Gagal membuat pesanan baru');
     }
-  };
-
-  const handlePrintStruk = (order: Order) => {
-    setOrderToPrint(order);
   };
 
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-screen bg-white">
-        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-blue-600"></div>
+        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-600"></div>
       </div>
     );
   }
@@ -376,11 +358,6 @@ export default function KasirPage() {
           )}
         </aside>
       </main>
-
-      {/* Hidden print component */}
-      <div style={{ display: 'none' }}>
-        <StrukPrint ref={strukRef} order={orderToPrint} />
-      </div>
     </div>
   );
 }
