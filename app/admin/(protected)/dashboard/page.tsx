@@ -2,35 +2,26 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import { supabase } from '@/lib/supabase';
-import { Order } from '@/types';
+import { Order, PaymentMethod, CartItem, OrderStatus } from '@/types'; 
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { RealtimePostgresChangesPayload } from '@supabase/supabase-js';
-
-// Define the order item type
-interface OrderItem {
-  id?: string | number;
-  name: string;
-  price: number;
-  qty: number;
-  category?: string;
-  description?: string;
-}
+// FIX 1: Hapus impor yang tidak terpakai ini
+// import { RealtimePostgresChangesPayload } from '@supabase/supabase-js';
 
 // Define the database row type for orders
 interface OrderRow {
   id: string | number;
   tokoId: string;
-  status: string;
+  status: OrderStatus; 
   total: number;
-  items: OrderItem[];
+  items: CartItem[]; 
   created_at: string;
-  payment_method: string;
+  paymentMethod: PaymentMethod | null; // Tipe dari DB bisa null
   customer_name?: string;
   customer_phone?: string;
   notes?: string;
   table_number?: number;
-  [key: string]: unknown; // For any additional fields
+  [key: string]: unknown;
 }
 
 export default function DashboardPage() {
@@ -57,51 +48,33 @@ export default function DashboardPage() {
         .in('status', ['baru', 'diproses'])
         .order('created_at', { ascending: false });
 
-      if (error) {
-        addDebugLog(`❌ Gagal mengambil pesanan: ${error.message}`);
-        throw error;
-      } else {
-        addDebugLog(`✅ Berhasil mengambil ${data?.length || 0} pesanan`);
-        
-        // Enhanced data mapping with proper type safety
-        const mappedData: Order[] = (data || []).map(item => ({
-          ...item,
-          id: String(item.id || Date.now()), // Ensure ID is always a non-empty string
-          createdAt: item.created_at || new Date().toISOString(),
-          paymentMethod: item.payment_method || 'CASH',
-          // Ensure items is properly structured
-          items: Array.isArray(item.items) ? item.items.map((orderItem: unknown): OrderItem => {
-            // Type guard for order item
-            if (typeof orderItem === 'object' && orderItem !== null) {
-              const item = orderItem as Record<string, unknown>;
-              return {
-                id: item.id as string | number | undefined,
-                name: typeof item.name === 'string' ? item.name : 'Unknown Item',
-                price: typeof item.price === 'number' ? item.price : 0,
-                qty: typeof item.qty === 'number' ? item.qty : 0,
-                category: typeof item.category === 'string' ? item.category : undefined,
-                description: typeof item.description === 'string' ? item.description : undefined,
-              };
-            }
-            // Fallback for invalid items
-            return {
-              name: 'Unknown Item',
-              price: 0,
-              qty: 0,
-            };
-          }) : [],
-          // Ensure total is a number
-          total: typeof item.total === 'number' ? item.total : 0,
-          // Ensure status is valid
-          status: ['baru', 'diproses', 'selesai'].includes(item.status) ? item.status : 'baru'
-        }));
-        
-        setOrders(mappedData);
-      }
+      if (error) throw error;
+      
+      addDebugLog(`✅ Berhasil mengambil ${data?.length || 0} pesanan`);
+
+      const mappedData: Order[] = (data || []).map((item: OrderRow) => ({
+        ...item,
+        id: String(item.id),
+        createdAt: item.created_at,
+        paymentMethod: item.paymentMethod, // Biarkan bisa null sesuai tipe Order
+        items: Array.isArray(item.items) ? item.items.map((cartItem: unknown): CartItem => {
+          const itemData = cartItem as Record<string, unknown>;
+          return {
+            menuId: String(itemData.menuId || ''),
+            name: String(itemData.name || 'Unknown Item'),
+            price: Number(itemData.price || 0),
+            qty: Number(itemData.qty || 0),
+          };
+        }) : [],
+        total: item.total,
+        status: item.status, 
+      }));
+
+      setOrders(mappedData);
+      
     } catch (err: unknown) {
       const errorMessage = err instanceof Error ? err.message : 'Unknown error';
       addDebugLog(`❌ Exception di fetchInitialOrders: ${errorMessage}`);
-      // Don't throw here to prevent app crash
     }
   }, [tokoId]);
 
@@ -110,32 +83,20 @@ export default function DashboardPage() {
       try {
         const { data: { session }, error: sessionError } = await supabase.auth.getSession();
         
-        if (sessionError) {
-          addDebugLog(`❌ Error getting session: ${sessionError.message}`);
-          router.push('/admin/login');
-          return;
-        }
-        
-        if (!session) {
-          addDebugLog('🔐 No session found, redirecting to login');
+        if (sessionError || !session) {
           router.push('/admin/login');
           return;
         }
         
         await fetchInitialOrders();
       } catch (err: unknown) {
-        const errorMessage = err instanceof Error ? err.message : 'Unknown error';
-        addDebugLog(`❌ Error di checkUserAndFetchOrders: ${errorMessage}`);
+        addDebugLog(`❌ Error di checkUserAndFetchOrders: ${(err as Error).message}`);
       } finally {
         setLoading(false);
       }
     };
 
     checkUserAndFetchOrders();
-
-    // Setup realtime subscription
-    addDebugLog('🔌 Menyiapkan langganan real-time...');
-    setRealtimeStatus('connecting');
     
     const channel = supabase.channel('realtime-orders-admin');
 
@@ -148,72 +109,42 @@ export default function DashboardPage() {
           table: 'orders', 
           filter: `tokoId=eq.${tokoId}` 
         },
-        (payload: RealtimePostgresChangesPayload<OrderRow>) => {
-          addDebugLog(`📡 Real-time event: ${payload.eventType}`);
-          
-          // Refetch orders after any change
+        () => {
           fetchInitialOrders();
-
-          // Show notification for new orders
-          if (payload.eventType === 'INSERT' && payload.new) {
-            if ('Notification' in window && Notification.permission === 'granted') {
-              new Notification('Pesanan Baru!', { 
-                body: `Pesanan #${String(payload.new.id).substring(0, 8)}...`,
-                icon: '/favicon.ico' // Add icon if available
-              });
-            }
-          }
         }
       )
       .subscribe((status) => {
         addDebugLog(`🔌 Realtime status: ${status}`);
-        if (status === 'SUBSCRIBED') {
-          setRealtimeStatus('connected');
-        } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
-          setRealtimeStatus('error');
-        } else if (status === 'CLOSED') {
-          setRealtimeStatus('disconnected');
-        }
+        if (status === 'SUBSCRIBED') setRealtimeStatus('connected');
+        else if (['CHANNEL_ERROR', 'TIMED_OUT'].includes(status)) setRealtimeStatus('error');
+        else if (status === 'CLOSED') setRealtimeStatus('disconnected');
       });
 
-    // Request notification permission
     if ('Notification' in window && Notification.permission === 'default') {
       Notification.requestPermission();
     }
 
     return () => {
-      addDebugLog('🔌 Cleaning up realtime subscription');
+      addDebugLog('🔌 Membersihkan langganan realtime');
       supabase.removeChannel(channel);
     };
   }, [router, fetchInitialOrders, tokoId]);
 
-  const handleUpdateStatus = async (orderId: string, newStatus: 'diproses' | 'selesai') => {
-    if (processingOrders.has(orderId)) {
-      addDebugLog(`⏳ Pesanan #${orderId} sudah dalam proses`);
-      return;
-    }
+  const handleUpdateStatus = async (orderId: string, newStatus: OrderStatus) => {
+    if (processingOrders.has(orderId)) return;
 
+    setProcessingOrders((prev) => new Set(prev).add(orderId));
     try {
-      setProcessingOrders((prev) => new Set(prev).add(orderId));
-      addDebugLog(`🔄 Mengupdate pesanan #${orderId} ke ${newStatus}`);
-
       const { error } = await supabase
         .from('orders')
         .update({ status: newStatus })
         .eq('id', orderId);
 
-      if (error) {
-        addDebugLog(`❌ Gagal update pesanan #${orderId}: ${error.message}`);
-        alert(`Gagal mengupdate status: ${error.message}`);
-      } else {
-        addDebugLog(`✅ Permintaan update #${orderId} berhasil`);
-      }
+      if (error) throw error;
+
     } catch (err: unknown) {
-      const errorMessage = err instanceof Error ? err.message : 'Unknown error';
-      addDebugLog(`❌ Exception update pesanan #${orderId}: ${errorMessage}`);
-      alert(`Terjadi kesalahan saat mengupdate pesanan: ${errorMessage}`);
+      alert(`Gagal mengupdate status: ${(err as Error).message}`);
     } finally {
-      // Remove from processing set after a delay to prevent rapid clicking
       setTimeout(() => {
         setProcessingOrders((prev) => {
           const newSet = new Set(prev);
@@ -226,21 +157,27 @@ export default function DashboardPage() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-screen bg-white">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-600 mx-auto"></div>
-          <p className="mt-4 text-gray-600">Memuat dashboard...</p>
-        </div>
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-600"></div>
       </div>
     );
   }
-
+  
   const statusInfo = {
     connected: { icon: '🟢', text: 'Terhubung', color: 'text-green-600' },
     connecting: { icon: '🟡', text: 'Menyambungkan...', color: 'text-yellow-600' },
     error: { icon: '🔴', text: 'Error', color: 'text-red-600' },
     disconnected: { icon: '⚫', text: 'Terputus', color: 'text-gray-600' },
   }[realtimeStatus];
+
+  const paymentDetails: Record<PaymentMethod | 'default', { icon: string; style: string; }> = {
+      CASH: { icon: '💰', style: 'bg-green-100 text-green-800' },
+      QRIS: { icon: '📱', style: 'bg-purple-100 text-purple-800' },
+      GOJEK: { icon: '🛵', style: 'bg-blue-100 text-blue-800' },
+      GRAB: { icon: '🚗', style: 'bg-emerald-100 text-emerald-800' },
+      SHOPEEFOOD: { icon: '🛍️', style: 'bg-orange-100 text-orange-800' },
+      default: { icon: '💳', style: 'bg-gray-100 text-gray-800' }
+  };
 
   return (
     <div className="min-h-screen bg-gray-50 font-sans">
@@ -273,8 +210,7 @@ export default function DashboardPage() {
             </div>
           ) : (
             orders.map((order) => {
-              // Ensure order.id is always a string
-              const orderId = order.id || String(Date.now());
+              const orderId = order.id;
               const isProcessing = processingOrders.has(orderId);
               return (
                 <div
@@ -283,9 +219,9 @@ export default function DashboardPage() {
                     order.status === 'baru' ? 'border-yellow-400' : 'border-blue-400'
                   } transition-all duration-200 ${isProcessing ? 'opacity-75 animate-pulse' : ''}`}
                 >
-                  <div className="flex justify-between items-start mb-3">
+                   <div className="flex justify-between items-start mb-3">
                     <h3 className="font-semibold text-gray-800 text-sm">
-                      Pesanan #{orderId.toString().substring(0, 8)}...
+                      Pesanan #{orderId.substring(0, 8)}...
                     </h3>
                     <span
                       className={`px-2 py-1 rounded-full text-xs font-medium uppercase ${
@@ -298,17 +234,14 @@ export default function DashboardPage() {
                   
                   <p className="text-xs text-gray-600 mb-3">
                     {new Date(order.createdAt).toLocaleString('id-ID', {
-                      year: 'numeric',
-                      month: 'short',
-                      day: 'numeric',
-                      hour: '2-digit',
-                      minute: '2-digit'
+                      year: 'numeric', month: 'short', day: 'numeric',
+                      hour: '2-digit', minute: '2-digit'
                     })}
                   </p>
 
                   <ul className="mb-3 space-y-1">
                     {(order.items || []).map((item, index) => (
-                      <li key={index} className="text-sm flex justify-between">
+                      <li key={`${orderId}-${item.menuId}-${index}`} className="text-sm flex justify-between">
                         <span>
                           {item.qty || 0}x {item.name || 'Unknown Item'}
                         </span>
@@ -321,20 +254,22 @@ export default function DashboardPage() {
                   <div className="border-t border-gray-200 pt-2 mb-4">
                     <div className="flex justify-between items-center">
                       <p className="font-semibold text-gray-800 text-sm">
-                        Total: Rp {(order.total || 0).toLocaleString('id-ID')}
+                        Total: Rp {order.total.toLocaleString('id-ID')}
                       </p>
-                      {order.paymentMethod && (
-                        <div
-                          className={`flex items-center gap-1.5 px-2 py-1 rounded-full text-xs font-medium ${
-                            order.paymentMethod === 'QRIS' 
-                              ? 'bg-purple-100 text-purple-800' 
-                              : 'bg-green-100 text-green-800'
-                          }`}
-                        >
-                          {order.paymentMethod === 'QRIS' ? '📱' : '💰'}
-                          <span>{order.paymentMethod}</span>
-                        </div>
-                      )}
+                      
+                      {(() => {
+                        // FIX 2: Beri fallback 'CASH' jika order.paymentMethod null
+                        const detail = paymentDetails[order.paymentMethod || 'CASH'] || paymentDetails.default;
+                        return (
+                          <div
+                            className={`flex items-center gap-1.5 px-2 py-1 rounded-full text-xs font-medium ${detail.style}`}
+                          >
+                            <span>{detail.icon}</span>
+                            <span>{order.paymentMethod || 'CASH'}</span>
+                          </div>
+                        );
+                      })()}
+
                     </div>
                   </div>
 

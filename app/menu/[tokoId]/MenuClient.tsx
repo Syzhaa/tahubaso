@@ -36,8 +36,18 @@ export default function MenuClient({ menus, tokoId }: { menus: Menu[], tokoId: s
   const [step, setStep] = useState<'menu' | 'payment' | 'qris' | 'success' | 'tracking'>('menu');
   const [showCart, setShowCart] = useState(false);
   const [currentOrder, setCurrentOrder] = useState<Order | null>(null);
-  const [currentPage, setCurrentPage] = useState(1); // Track current page
-  const menusPerPage = 5; // Limit to 5 menus per page
+  const [currentPage, setCurrentPage] = useState(1);
+
+  // Adjust menus per page based on screen size
+  const [isMobile, setIsMobile] = useState(typeof window !== 'undefined' && window.innerWidth < 640);
+  useEffect(() => {
+    const handleResize = () => {
+      setIsMobile(window.innerWidth < 640);
+    };
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+  const menusPerPage = isMobile ? 4 : 8;
 
   // Real-time order tracking
   useEffect(() => {
@@ -59,7 +69,6 @@ export default function MenuClient({ menus, tokoId }: { menus: Menu[], tokoId: s
           const updatedOrder = payload.new as Order;
           setCurrentOrder(updatedOrder);
           
-          // Show notification for status updates
           if ('Notification' in window && Notification.permission === 'granted') {
             let message = '';
             switch (updatedOrder.status) {
@@ -81,7 +90,6 @@ export default function MenuClient({ menus, tokoId }: { menus: Menu[], tokoId: s
       )
       .subscribe();
 
-    // Request notification permission
     if ('Notification' in window && Notification.permission === 'default') {
       Notification.requestPermission();
     }
@@ -89,9 +97,9 @@ export default function MenuClient({ menus, tokoId }: { menus: Menu[], tokoId: s
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [currentOrder]); // Added currentOrder to dependency array
+  }, [currentOrder]);
 
-  // --- Cart Management ---
+  // Cart Management
   const addToCart = (menu: Menu) => {
     setCart(prevCart => {
       const existingItem = prevCart.find(item => item.menuId === menu.id!);
@@ -126,7 +134,7 @@ export default function MenuClient({ menus, tokoId }: { menus: Menu[], tokoId: s
     [cart]
   );
 
-  // --- Order Submission ---
+  // Order Submission
   const submitOrder = async (paymentMethod: 'cash' | 'QRIS') => {
     if (cart.length === 0) return;
     setIsSubmitting(true);
@@ -148,7 +156,6 @@ export default function MenuClient({ menus, tokoId }: { menus: Menu[], tokoId: s
         throw error;
       }
       
-      // Set current order for tracking
       if (data && data[0]) {
         console.log('Order created successfully:', data[0]);
         setCurrentOrder(data[0] as Order);
@@ -175,12 +182,12 @@ export default function MenuClient({ menus, tokoId }: { menus: Menu[], tokoId: s
     setStep('tracking');
   }
 
-  // --- Pagination Logic ---
+  // Pagination Logic
   const totalPages = Math.ceil(menus.length / menusPerPage);
   const paginatedMenus = useMemo(() => {
     const startIndex = (currentPage - 1) * menusPerPage;
     return menus.slice(startIndex, startIndex + menusPerPage);
-  }, [menus, currentPage]);
+  }, [menus, currentPage, menusPerPage]);
 
   const handlePreviousPage = () => {
     if (currentPage > 1) {
@@ -194,8 +201,7 @@ export default function MenuClient({ menus, tokoId }: { menus: Menu[], tokoId: s
     }
   };
 
-  // --- Render Methods for Different Steps ---
-
+  // Render Methods for Different Steps
   const renderTracking = () => (
     <div className="fixed inset-0 bg-gray-900 bg-opacity-60 flex items-center justify-center p-4 z-50">
       <div className="text-center p-8 bg-white rounded-2xl max-w-md mx-auto shadow-2xl w-full">
@@ -388,7 +394,6 @@ export default function MenuClient({ menus, tokoId }: { menus: Menu[], tokoId: s
             <h1 className="text-4xl font-extrabold text-gray-800 tracking-tight">Selamat Datang!</h1>
             <p className="mt-2 text-lg text-gray-500">Pilih menu favorit Anda di bawah ini.</p>
             
-            {/* Real-time indicator */}
             <div className="flex items-center justify-center gap-2 mt-4">
                 <div className="w-3 h-3 bg-green-500 rounded-full animate-pulse"></div>
                 <span className="text-sm text-gray-600">Real-time Menu Active</span>
@@ -398,34 +403,41 @@ export default function MenuClient({ menus, tokoId }: { menus: Menu[], tokoId: s
         <div className="flex flex-col lg:flex-row gap-8">
           {/* Menu Items */}
           <div className="w-full lg:w-3/5 xl:w-2/3">
-            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+            <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
               {paginatedMenus.map((menu) => (
-                <div key={menu.id} className="bg-white border border-gray-200 rounded-xl shadow-sm hover:shadow-xl transition-all duration-300 flex flex-col overflow-hidden group">
+                <div 
+                  key={menu.id} 
+                  className="bg-white rounded-2xl shadow-lg hover:shadow-xl transition-all duration-300 overflow-hidden transform hover:-translate-y-1 group"
+                >
                   {menu.imageUrl && (
-                    <div className="relative w-full h-48 overflow-hidden">
-                        <Image
-                          src={menu.imageUrl}
-                          alt={menu.name}
-                          fill
-                          className="object-cover transition-transform duration-300 group-hover:scale-105"
-                          onError={(e) => { e.currentTarget.src = `https://placehold.co/400x300/e0e0e0/777?text=${menu.name.replace(/\s/g,'+')}`; }}
-                        />
+                    <div className="relative w-full h-52 overflow-hidden">
+                      <Image
+                        src={menu.imageUrl}
+                        alt={menu.name}
+                        fill
+                        className="object-cover transition-transform duration-500 group-hover:scale-110"
+                        onError={(e) => { e.currentTarget.src = `https://placehold.co/400x300/e0e0e0/777?text=${menu.name.replace(/\s/g,'+')}`; }}
+                      />
+                      <div className="absolute inset-0 bg-gradient-to-t from-black/30 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
                     </div>
                   )}
-                  <div className="p-4 flex flex-col flex-grow">
-                    <h3 className="font-bold text-lg text-gray-800 mb-1">{menu.name}</h3>
+                  <div className="p-5 flex flex-col">
+                    <h3 className="font-semibold text-xl text-gray-900 mb-2 line-clamp-2">{menu.name}</h3>
                     {menu.description && (
-                      <p className="text-gray-500 text-sm mb-3 flex-grow">{menu.description}</p>
+                      <p className="text-gray-600 text-sm mb-4 line-clamp-3 leading-relaxed">{menu.description}</p>
                     )}
-                    <div className="mt-auto flex justify-between items-center pt-3">
+                    <div className="mt-auto flex justify-between items-center">
                       <span className="text-indigo-600 font-bold text-lg">
                         Rp {menu.price.toLocaleString('id-ID')}
                       </span>
                       <button
                         onClick={() => addToCart(menu)}
-                        className="bg-blue-600 text-white px-5 py-2 rounded-lg font-semibold hover:bg-blue-700 focus:outline-none focus:ring-4 focus:ring-blue-300 transition-transform transform hover:scale-105"
+                        className="bg-gradient-to-r from-blue-500 to-indigo-600 text-white px-4 py-2 rounded-full font-medium hover:from-blue-600 hover:to-indigo-700 focus:outline-none focus:ring-4 focus:ring-blue-300 transition-all duration-200 transform hover:scale-105 flex items-center gap-2"
                       >
-                        + Tambah
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" />
+                        </svg>
+                        Tambah
                       </button>
                     </div>
                   </div>
@@ -434,21 +446,21 @@ export default function MenuClient({ menus, tokoId }: { menus: Menu[], tokoId: s
             </div>
             {/* Pagination Controls */}
             {totalPages > 1 && (
-              <div className="flex justify-between items-center mt-6">
+              <div className="flex justify-between items-center mt-8">
                 <button
                   onClick={handlePreviousPage}
                   disabled={currentPage === 1}
-                  className="px-4 py-2 bg-gray-200 text-gray-600 rounded-md disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-300 transition-all duration-200 text-sm font-medium"
+                  className="px-5 py-2 bg-gray-200 text-gray-700 rounded-full disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-300 transition-all duration-200 font-medium"
                 >
                   Sebelumnya
                 </button>
-                <span className="text-sm text-gray-600">
+                <span className="text-sm text-gray-600 font-medium">
                   Halaman {currentPage} dari {totalPages}
                 </span>
                 <button
                   onClick={handleNextPage}
                   disabled={currentPage === totalPages}
-                  className="px-4 py-2 bg-gray-200 text-gray-600 rounded-md disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-300 transition-all duration-200 text-sm font-medium"
+                  className="px-5 py-2 bg-gray-200 text-gray-700 rounded-full disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-300 transition-all duration-200 font-medium"
                 >
                   Selanjutnya
                 </button>
@@ -458,7 +470,7 @@ export default function MenuClient({ menus, tokoId }: { menus: Menu[], tokoId: s
 
           {/* Shopping Cart - Desktop */}
           <div className="w-full lg:w-2/5 xl:w-1/3 hidden lg:block">
-            <div className="border bg-white border-gray-200 rounded-xl shadow-lg sticky top-6">
+            <div className="border bg-white border-gray-200 rounded-2xl shadow-lg sticky top-6">
               {renderCartContent()}
             </div>
           </div>
@@ -567,7 +579,6 @@ export default function MenuClient({ menus, tokoId }: { menus: Menu[], tokoId: s
     </>
   );
 
-  // --- Main Render Logic ---
   switch (step) {
     case 'success':
       return renderSuccess();
